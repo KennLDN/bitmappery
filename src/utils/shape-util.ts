@@ -77,40 +77,149 @@ export const isShapeClosed = ( shape: Shape ): boolean => {
  * Verifies whether given shapes overlap and thus can be merged.
  * Note: this assumes each shape is not self-intersecting and has no holes.
  */
-export const canBeMerged = ( shapeA: Shape, shapeB: Shape ): boolean => {
-    // Combine the coordinates of both polygons into a single array
-    let combinedCoords = [ ...shapeA.flat(), ...shapeB.flat() ];
+export const hasOverlap = ( shapeA: Shape, shapeB: Shape ): boolean => {
+    const intersections = getIntersectionPoints1( shapeA, shapeB );
+    return intersections.length > 0;
+};
 
-    // Sort the coordinates in counterclockwise order
-    combinedCoords.sort(( a, b ) => {
-        return ( a.x - combinedCoords[ 0 ].x ) * ( b.y - combinedCoords[ 0 ].y ) -
-               ( b.x - combinedCoords[ 0 ].x ) * ( a.y - combinedCoords[ 0 ].y );
-    });
-
-    // Check if any coordinate is the same as the previous coordinate
-    for ( let i = 1; i < combinedCoords.length; i++ ) {
-        if ( combinedCoords[ i ].x === combinedCoords[ i - 1 ].x &&
-             combinedCoords[ i ].y === combinedCoords[ i - 1 ].y ) {
-            return true;
-        }
+function getIntersectionPoints1(path1, path2) {
+  const intersectionPoints = [];
+  for (let i = 0; i < path1.length; i++) {
+    const p1 = path1[i];
+    const p2 = path1[(i + 1) % path1.length];
+    for (let j = 0; j < path2.length; j++) {
+      const p3 = path2[j];
+      const p4 = path2[(j + 1) % path2.length];
+      const intersection = getLineIntersectionA(p1, p2, p3, p4);
+      if (intersection) {
+        intersectionPoints.push(intersection);
+      }
     }
+  }
+  return intersectionPoints;
+}
+
+function getLineIntersectionA(a1, a2, b1, b2) { const d = (a1.x - a2.x) * (b2.y - b1.y) - (a1.y - a2.y) * (b2.x - b1.x); if (d === 0) { return null; } const ua = ((a1.y - a2.y) * (b1.x - a1.x) - (a1.x - a2.x) * (b1.y - a1.y)) / d; const ub = ((b1.y - b2.y) * (b1.x - a1.x) - (b1.x - b2.x) * (b1.y - a1.y)) / d; if (ua < 0 || ua > 1 || ub < 0 || ub > 1) { return null; } return { x: a1.x + ua * (a2.x - a1.x), y: a1.y + ua * (a2.y - a1.y) }; }
+
+
+// er?
+
+export function mergeShapes( shapeA: Shape, shapeB: Shape ): Shape {
+  const points = [ ...shapeA, ...shapeB ];
+  const sortedPoints = isClockwise( points ) ? points : points.reverse();
+
+  const intersectPoints = [];
+  
+  for ( let i = 0; i < sortedPoints.length; i++) {
+    const current = sortedPoints[i];
+    const next = sortedPoints[(i + 1) % sortedPoints.length];
+
+    for (let j = i + 1; j < sortedPoints.length; j++) {
+      const check = sortedPoints[j];
+      const afterCheck = sortedPoints[(j + 1) % sortedPoints.length];
+      if (doLineSegmentsIntersect(current, next, check, afterCheck)) {
+        intersectPoints.push(getIntersectionPoint(current, next, check, afterCheck));
+      }
+    }
+  }
+
+  const uniquePoints = [...new Set([...points, ...intersectPoints].map(p => `${p.x},${p.y}`))]
+    .map(str => {
+      const [x, y] = str.split(',').map(Number);
+      return { x, y };
+    });
+
+  return uniquePoints.sort( comparePoints );
+}
+
+function comparePoints( a: Point, b: Point ): number {
+    if ( a.x === b.x ) {
+        return a.y - b.y;
+    }
+    return a.x - b.x;
+}
+
+
+function clipPolygon(subjectPolygon, clipPolygon) {
+  let outputList = subjectPolygon;
+  let cp1 = clipPolygon[clipPolygon.length - 1];
+
+  for (const cp2 of clipPolygon) {
+    const inputList = outputList;
+    outputList = [];
+    let s = inputList[inputList.length - 1];
+
+    for (const e of inputList) {
+      if (isInside(e, cp1, cp2)) {
+        if (!isInside(s, cp1, cp2)) {
+          outputList.push(intersection(s, e, cp1, cp2));
+        }
+        outputList.push(e);
+      } else if (isInside(s, cp1, cp2)) {
+        outputList.push(intersection(s, e, cp1, cp2));
+      }
+      s = e;
+    }
+    cp1 = cp2;
+  }
+
+  return outputList;
+}
+
+function isInside(p, cp1, cp2) {
+  return (cp2.x - cp1.x) * (p.y - cp1.y) > (cp2.y - cp1.y) * (p.x - cp1.x);
+}
+
+function intersection(s, e, cp1, cp2) {
+  const dc = { x: cp1.x - cp2.x, y: cp1.y - cp2.y };
+  const dp = { x: s.x - e.x, y: s.y - e.y };
+  const n1 = cp1.x * cp2.y - cp1.y * cp2.x;
+  const n2 = s.x * e.y - s.y * e.x;
+  const n3 = 1.0 / (dc.x * dp.y - dc.y * dp.x);
+
+  return { x: (n1 * dp.x - n2 * dc.x) * n3, y: (n1 * dp.y - n2 * dc.y) * n3 };
+}
+
+function isClockwise(points) {
+  let sum = 0;
+  for (let i = 0; i < points.length; i++) {
+    const current = points[i];
+    const next = points[(i + 1) % points.length];
+    sum += (next.x - current.x) * (next.y + current.y);
+  }
+  return sum > 0;
+}
+
+function doLineSegmentsIntersect(a, b, c, d) {
+  const denominator = ((b.x - a.x) * (d.y - c.y)) - ((b.y - a.y) * (d.x - c.x));
+  if (denominator === 0) {
     return false;
-};
+  }
 
-export const mergeShapes = ( shapeA: Shape, shapeB: Shape ): Shape => {
-    let combinedCoords = [ ...shapeA, ...shapeB ];
+  const numerator1 = ((a.y - c.y) * (d.x - c.x)) - ((a.x - c.x) * (d.y - c.y));
+  const numerator2 = ((a.y - c.y) * (b.x - a.x)) - ((a.x - c.x) * (b.y - a.y));
 
-    // Sort the coordinates in counterclockwise order
-    combinedCoords.sort(( a, b ) => {
-        return ( a.x - combinedCoords[ 0 ].x ) * ( b.y - combinedCoords[ 0 ].y ) -
-               ( b.x - combinedCoords[ 0 ].x ) * ( a.y - combinedCoords[ 0 ].y );
-    });
+  if (numerator1 === 0 || numerator2 === 0) {
+    return false;
+  }
 
-    // Remove any duplicate points
-    let uniqueCoords = combinedCoords.filter(( item, index ) => {
-        return combinedCoords.findIndex(( coord ) => coord.x === item.x && coord.y === item.y ) === index;
-    });
+  const r = numerator1 / denominator;
+  const s = numerator2 / denominator;
 
-    // Create a new array of polygons that contains the merged polygon
-    return uniqueCoords;
-};
+  return (r > 0 && r < 1) && (s > 0 && s < 1);
+}
+
+function getIntersectionPoint(a, b, c, d) {
+  const denominator = ((b.x - a.x) * (d.y - c.y)) - ((b.y - a.y) * (d.x - c.x));
+  if (denominator === 0) {
+    return null;
+  }
+
+  const numerator1 = ((a.y - c.y) * (d.x - c.x)) - ((a.x - c.x) * (d.y - c.y));
+  const r = numerator1 / denominator;
+
+  const x = a.x + (r * (b.x - a.x));
+  const y = a.y + (r * (b.y - a.y));
+
+  return { x, y };
+}
