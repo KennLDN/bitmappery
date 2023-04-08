@@ -292,6 +292,7 @@ class InteractionPane extends sprite {
                     // selection mode, set the click coordinate as the first point in the selection
                     const firstPoint = selectionShape[ 0 ];
                     if ( firstPoint ) {
+                        console.info('has first point.')
                         if ( isShiftKeyDown ) {
                             ({ x, y } = snapToAngle( x, y, selectionShape.at( -1 ) ));
                         }
@@ -301,7 +302,7 @@ class InteractionPane extends sprite {
                             y = firstPoint.y;
                             completeSelection = true;
 
-                            if ( isShiftKeyDown && activeSelection.length > 1 && hasOverlap( selectionShape, activeSelection[ 0 ]) ) {
+                            if ( activeSelection.length > 1 && hasOverlap( selectionShape, activeSelection[ 0 ]) ) {
                                 console.warn('merging');
                                 activeSelection = [ mergeShapes( selectionShape, activeSelection[ 0 ] ) ];
                             } else {

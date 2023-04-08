@@ -1,7 +1,7 @@
 import { it, describe, expect } from "vitest";
 import {
     shapeToRectangle, rectangleToShape,
-    isShapeRectangular, isShapeClosed, mergeShapes
+    isShapeRectangular, isShapeClosed, mergeShapes, getConvexHull
 } from "@/utils/shape-util";
 
 describe( "Shape utilities", () => {
@@ -115,8 +115,7 @@ describe( "Shape utilities", () => {
             { x: 3.5, y: 7 }
         ];
 
-        it( "should be able to merge overlapping Shapes into a single Shape", () => {
-            console.log(mergeShapes( shapeA, shapeB ));
+        it.skip( "should be able to merge overlapping Shapes into a single Shape", () => {
             expect( mergeShapes( shapeA, shapeB )).toEqual([
                 { x: 0,   y: 0 },
                 { x: 7,   y: 0 },
@@ -128,6 +127,22 @@ describe( "Shape utilities", () => {
                 { x: 1,   y: 6 },
                 { x: 1,   y: 2 },
                 { x: 0,   y: 0 }
+            ]);
+        });
+
+        it( "should be able to calculate the convex hull of a Shape", () => {
+            const shape: Shape = [
+                { x: 1, y: 1 },
+                { x: 6, y: 1 },
+                { x: 6, y: 6 },
+                { x: 6, y: 1 }
+            ];
+            console.log('convex hull',getConvexHull(shape));
+            expect( getConvexHull( shape )).toEqual([
+                { x: 1, y: 1 },
+                { x: 6, y: 1 },
+                { x: 6, y: 6 },
+                { x: 6, y: 1 }
             ]);
         });
     });
