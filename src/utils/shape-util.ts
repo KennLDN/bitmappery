@@ -20,7 +20,7 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import type { Rectangle } from "zcanvas";
+import type { Point, Rectangle } from "zcanvas";
 import type { Shape } from "@/definitions/document";
 
 export const shapeToRectangle = ( shape: Shape ): Rectangle => {
@@ -78,56 +78,66 @@ export const isShapeClosed = ( shape: Shape ): boolean => {
  * Note: this assumes each shape is not self-intersecting and has no holes.
  */
 export const hasOverlap = ( shapeA: Shape, shapeB: Shape ): boolean => {
-    const intersections = getIntersectionPoints1( shapeA, shapeB );
-    return intersections.length > 0;
+    const intersectionPoints = [];
+    for ( let i = 0; i < shapeA.length; i++ ) {
+        const p1 = shapeA[ i ];
+        const p2 = shapeA[( i + 1 ) % shapeA.length ];
+        for ( let j = 0; j < shapeB.length; j++ ) {
+            const p3 = shapeB[ j ];
+            const p4 = shapeB[( j + 1 ) % shapeB.length ];
+            const intersection = getLineIntersectionA( p1, p2, p3, p4 );
+            if ( intersection ) {
+                intersectionPoints.push( intersection );
+            }
+        }
+    }
+    return intersectionPoints.length > 0;
 };
 
-function getIntersectionPoints1(path1, path2) {
-  const intersectionPoints = [];
-  for (let i = 0; i < path1.length; i++) {
-    const p1 = path1[i];
-    const p2 = path1[(i + 1) % path1.length];
-    for (let j = 0; j < path2.length; j++) {
-      const p3 = path2[j];
-      const p4 = path2[(j + 1) % path2.length];
-      const intersection = getLineIntersectionA(p1, p2, p3, p4);
-      if (intersection) {
-        intersectionPoints.push(intersection);
-      }
+function getLineIntersectionA( a1: Point, a2: Point, b1: Point, b2: Point ): Point | null {
+    const d = ( a1.x - a2.x ) * ( b2.y - b1.y ) - ( a1.y - a2.y ) * ( b2.x - b1.x );
+    if ( d === 0 ) {
+        return null;
     }
-  }
-  return intersectionPoints;
-}
+    const ua = (( a1.y - a2.y ) * ( b1.x - a1.x ) - ( a1.x - a2.x ) * ( b1.y - a1.y )) / d;
+    const ub = (( b1.y - b2.y ) * ( b1.x - a1.x ) - ( b1.x - b2.x ) * ( b1.y - a1.y )) / d;
 
-function getLineIntersectionA(a1, a2, b1, b2) { const d = (a1.x - a2.x) * (b2.y - b1.y) - (a1.y - a2.y) * (b2.x - b1.x); if (d === 0) { return null; } const ua = ((a1.y - a2.y) * (b1.x - a1.x) - (a1.x - a2.x) * (b1.y - a1.y)) / d; const ub = ((b1.y - b2.y) * (b1.x - a1.x) - (b1.x - b2.x) * (b1.y - a1.y)) / d; if (ua < 0 || ua > 1 || ub < 0 || ub > 1) { return null; } return { x: a1.x + ua * (a2.x - a1.x), y: a1.y + ua * (a2.y - a1.y) }; }
+    if ( ua < 0 || ua > 1 || ub < 0 || ub > 1 ) {
+        return null;
+    }
+    return {
+        x: a1.x + ua * ( a2.x - a1.x ),
+        y: a1.y + ua * ( a2.y - a1.y )
+    };
+}
 
 
 // er?
 
 export function mergeShapes( shapeA: Shape, shapeB: Shape ): Shape {
-  const points = [ ...shapeA, ...shapeB ];
-  const sortedPoints = isClockwise( points ) ? points : points.reverse();
+    const points: Shape = [ ...shapeA, ...shapeB ];
+    const sortedPoints = isClockwise( points ) ? points : points.reverse();
 
-  const intersectPoints = [];
+    const intersectPoints: Point[] = [];
 
-  for ( let i = 0; i < sortedPoints.length; i++) {
-    const current = sortedPoints[i];
-    const next = sortedPoints[(i + 1) % sortedPoints.length];
+    for ( let i = 0; i < sortedPoints.length; i++ ) {
+        const current = sortedPoints[ i ];
+        const next = sortedPoints[( i + 1 ) % sortedPoints.length ];
 
-    for (let j = i + 1; j < sortedPoints.length; j++) {
-      const check = sortedPoints[j];
-      const afterCheck = sortedPoints[(j + 1) % sortedPoints.length];
-      if (doLineSegmentsIntersect(current, next, check, afterCheck)) {
-        intersectPoints.push(getIntersectionPoint(current, next, check, afterCheck));
-      }
+        for ( let j = i + 1; j < sortedPoints.length; j++ ) {
+            const check = sortedPoints[ j ];
+            const afterCheck = sortedPoints[( j + 1 ) % sortedPoints.length ];
+            if ( doLineSegmentsIntersect( current, next, check, afterCheck )) {
+                intersectPoints.push( getIntersectionPoint( current, next, check, afterCheck ));
+            }
+        }
     }
-  }
 
-  const uniquePoints = [...new Set([...points, ...intersectPoints].map(p => `${p.x},${p.y}`))]
-    .map(str => {
-      const [x, y] = str.split(',').map(Number);
-      return { x, y };
-    });
+    const uniquePoints = [ ...new Set([ ...points, ...intersectPoints ].map( p => `${p.x},${p.y}` ))]
+        .map( str => {
+            const [ x, y ] = str.split( "," ).map( Number );
+            return { x, y };
+        });
 
     const mergedPoints = uniquePoints.sort( comparePoints );
     return mergedPoints;/*
@@ -148,155 +158,114 @@ function comparePoints( a: Point, b: Point ): number {
     return a.x - b.x;
 }
 
-
-function clipPolygon(subjectPolygon, clipPolygon) {
-  let outputList = subjectPolygon;
-  let cp1 = clipPolygon[clipPolygon.length - 1];
-
-  for (const cp2 of clipPolygon) {
-    const inputList = outputList;
-    outputList = [];
-    let s = inputList[inputList.length - 1];
-
-    for (const e of inputList) {
-      if (isInside(e, cp1, cp2)) {
-        if (!isInside(s, cp1, cp2)) {
-          outputList.push(intersection(s, e, cp1, cp2));
-        }
-        outputList.push(e);
-      } else if (isInside(s, cp1, cp2)) {
-        outputList.push(intersection(s, e, cp1, cp2));
-      }
-      s = e;
+function isClockwise( shape: Shape ): boolean {
+    let sum = 0;
+    for ( let i = 0; i < shape.length; i++ ) {
+        const current = shape[ i ];
+        const next = shape[( i + 1 ) % shape.length ];
+        sum += ( next.x - current.x ) * ( next.y + current.y );
     }
-    cp1 = cp2;
-  }
-
-  return outputList;
+    return sum > 0;
 }
 
-function isInside(p, cp1, cp2) {
-  return (cp2.x - cp1.x) * (p.y - cp1.y) > (cp2.y - cp1.y) * (p.x - cp1.x);
+function doLineSegmentsIntersect( a: Point, b: Point, c: Point, d: Point ): boolean {
+    const denominator = (( b.x - a.x ) * ( d.y - c.y )) - (( b.y - a.y ) * ( d.x - c.x ));
+    if ( denominator === 0 ) {
+        return false;
+    }
+
+    const numerator1 = (( a.y - c.y ) * ( d.x - c.x )) - (( a.x - c.x ) * ( d.y - c.y ));
+    const numerator2 = (( a.y - c.y ) * ( b.x - a.x )) - (( a.x - c.x ) * ( b.y - a.y ));
+
+    if ( numerator1 === 0 || numerator2 === 0 ) {
+        return false;
+    }
+
+    const r = numerator1 / denominator;
+    const s = numerator2 / denominator;
+
+    return ( r > 0 && r < 1 ) && ( s > 0 && s < 1 );
 }
 
-function intersection(s, e, cp1, cp2) {
-  const dc = { x: cp1.x - cp2.x, y: cp1.y - cp2.y };
-  const dp = { x: s.x - e.x, y: s.y - e.y };
-  const n1 = cp1.x * cp2.y - cp1.y * cp2.x;
-  const n2 = s.x * e.y - s.y * e.x;
-  const n3 = 1.0 / (dc.x * dp.y - dc.y * dp.x);
+function getIntersectionPoint( a: Point, b: Point, c: Point, d: Point ): Point {
+    const denominator = (( b.x - a.x ) * ( d.y - c.y )) - (( b.y - a.y ) * ( d.x - c.x ));
+    if ( denominator === 0 ) {
+        return null;
+    }
 
-  return { x: (n1 * dp.x - n2 * dc.x) * n3, y: (n1 * dp.y - n2 * dc.y) * n3 };
-}
+    const numerator1 = (( a.y - c.y ) * ( d.x - c.x )) - (( a.x - c.x ) * ( d.y - c.y ));
+    const r = numerator1 / denominator;
 
-function isClockwise(points) {
-  let sum = 0;
-  for (let i = 0; i < points.length; i++) {
-    const current = points[i];
-    const next = points[(i + 1) % points.length];
-    sum += (next.x - current.x) * (next.y + current.y);
-  }
-  return sum > 0;
-}
+    const x = a.x + ( r * ( b.x - a.x ));
+    const y = a.y + ( r * ( b.y - a.y ));
 
-function doLineSegmentsIntersect(a, b, c, d) {
-  const denominator = ((b.x - a.x) * (d.y - c.y)) - ((b.y - a.y) * (d.x - c.x));
-  if (denominator === 0) {
-    return false;
-  }
-
-  const numerator1 = ((a.y - c.y) * (d.x - c.x)) - ((a.x - c.x) * (d.y - c.y));
-  const numerator2 = ((a.y - c.y) * (b.x - a.x)) - ((a.x - c.x) * (b.y - a.y));
-
-  if (numerator1 === 0 || numerator2 === 0) {
-    return false;
-  }
-
-  const r = numerator1 / denominator;
-  const s = numerator2 / denominator;
-
-  return (r > 0 && r < 1) && (s > 0 && s < 1);
-}
-
-function getIntersectionPoint(a, b, c, d) {
-  const denominator = ((b.x - a.x) * (d.y - c.y)) - ((b.y - a.y) * (d.x - c.x));
-  if (denominator === 0) {
-    return null;
-  }
-
-  const numerator1 = ((a.y - c.y) * (d.x - c.x)) - ((a.x - c.x) * (d.y - c.y));
-  const r = numerator1 / denominator;
-
-  const x = a.x + (r * (b.x - a.x));
-  const y = a.y + (r * (b.y - a.y));
-
-  return { x, y };
+    return { x, y };
 }
 
 export function getConvexHull( shape: Shape ): Shape {
     const hullShape: Shape = [ ...shape ];
     hullShape.sort( POINT_COMPARATOR );
-    const out = makeHullPresorted( hullShape );
-    if ( !isShapeClosed( out )) {
-        out.push({ ...out[ 0 ]});
-    }
-    return out;
+    return makeHullPresorted( hullShape );
 }
 
-function POINT_COMPARATOR(a: Point, b: Point): number {
-		if (a.x < b.x)
-			return -1;
-		else if (a.x > b.x)
-			return +1;
-		else if (a.y < b.y)
-			return -1;
-		else if (a.y > b.y)
-			return +1;
-		else
-			return 0;
-	}
+function POINT_COMPARATOR( a: Point, b: Point ): number {
+    if ( a.x < b.x ) {
+        return -1;
+    } else if ( a.x > b.x ) {
+        return 1;
+    } else if ( a.y < b.y ) {
+        return -1;
+    } else if ( a.y > b.y ) {
+        return +1;
+    }
+    return 0;
+}
 
-    // Returns the convex hull, assuming that each points[i] <= points[i + 1]. Runs in O(n) time.
-	export function makeHullPresorted<P extends Point>(points: Readonly<Array<P>>): Array<P> {
-		if (points.length <= 1)
-			return points.slice();
+// Returns the convex hull, assuming that each points[i] <= points[i + 1]. Runs in O(n) time.
+export function makeHullPresorted( points: Readonly<Shape> ): Shape {
+    if ( points.length <= 1 ) {
+        return points.slice();
+    }
 
-		// Andrew's monotone chain algorithm. Positive y coordinates correspond to "up"
-		// as per the mathematical convention, instead of "down" as per the computer
-		// graphics convention. This doesn't affect the correctness of the result.
+    // Andrew's monotone chain algorithm. Positive y coordinates correspond to "up"
+    // as per the mathematical convention, instead of "down" as per the computer
+    // graphics convention. This doesn't affect the correctness of the result.
 
-		let upperHull: Array<P> = [];
-		for (let i = 0; i < points.length; i++) {
-			const p: P = points[i];
-			while (upperHull.length >= 2) {
-				const q: P = upperHull[upperHull.length - 1];
-				const r: P = upperHull[upperHull.length - 2];
-				if ((q.x - r.x) * (p.y - r.y) >= (q.y - r.y) * (p.x - r.x))
-					upperHull.pop();
-				else
-					break;
-			}
-			upperHull.push(p);
-		}
-		upperHull.pop();
+    let upperHull: Shape = [];
+    for ( let i = 0; i < points.length; i++ ) {
+        const p: Point = points[ i ];
+        while ( upperHull.length >= 2 ) {
+            const q: Point = upperHull[ upperHull.length - 1 ];
+            const r: Point = upperHull[ upperHull.length - 2 ];
+            if (( q.x - r.x ) * ( p.y - r.y ) >= ( q.y - r.y ) * ( p.x - r.x )) {
+                upperHull.pop();
+            } else {
+                break;
+            }
+        }
+        upperHull.push( p );
+    }
+    upperHull.pop();
 
-		let lowerHull: Array<P> = [];
-		for (let i = points.length - 1; i >= 0; i--) {
-			const p: P = points[i];
-			while (lowerHull.length >= 2) {
-				const q: P = lowerHull[lowerHull.length - 1];
-				const r: P = lowerHull[lowerHull.length - 2];
-				if ((q.x - r.x) * (p.y - r.y) >= (q.y - r.y) * (p.x - r.x))
-					lowerHull.pop();
-				else
-					break;
-			}
-			lowerHull.push(p);
-		}
-		lowerHull.pop();
+    let lowerHull: Shape = [];
+    for ( let i = points.length - 1; i >= 0; i-- ) {
+        const p: Point = points[ i ];
+        while ( lowerHull.length >= 2 ) {
+            const q: Point = lowerHull[ lowerHull.length - 1 ];
+            const r: Point = lowerHull[ lowerHull.length - 2 ];
+            if (( q.x - r.x ) * ( p.y - r.y ) >= ( q.y - r.y ) * ( p.x - r.x )) {
+                lowerHull.pop();
+            } else {
+                break;
+            }
+        }
+        lowerHull.push( p );
+    }
+    lowerHull.pop();
 
-		if (upperHull.length == 1 && lowerHull.length == 1 && upperHull[0].x == lowerHull[0].x && upperHull[0].y == lowerHull[0].y)
-			return upperHull;
-		else
-			return upperHull.concat(lowerHull);
-	}
+    if ( upperHull.length === 1 && lowerHull.length === 1 &&
+         upperHull[ 0 ].x === lowerHull[ 0 ].x && upperHull[ 0 ].y === lowerHull[ 0 ].y ) {
+         return upperHull;
+    }
+    return upperHull.concat( lowerHull );
+}
